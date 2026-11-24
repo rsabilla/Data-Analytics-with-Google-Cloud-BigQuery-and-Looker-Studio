@@ -1,0 +1,228 @@
+---
+title: "Data Analytics with Google Cloud BigQuery and Looker Studio"
+subtitle: "LinkedIn Learning Course Summary"
+author: "Ron Sabilla"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    theme: cosmo
+    code-copy: true
+    code-overflow: wrap
+execute:
+  eval: false
+---
+
+## Overview
+
+The whole course is built around one project. You pretend you're a reporter writing an article about how the world's temperature has changed over the last 100 years. To write that article, you need to:
+
+1. Find data to back up the story
+2. Analyze the data to see what it says
+3. Turn it into charts people can understand
+
+The data came from a free weather dataset in BigQuery (NOAA's daily weather records). I used BigQuery to work with the data and Looker Studio to make the charts.
+
+## What the Tools Are
+
+### BigQuery
+
+BigQuery is Google's tool for storing and searching through really big sets of data. You type SQL code into your browser and it gives you results. Here's what I learned about it:
+
+- **You don't have to set anything up.** It all runs in the browser.
+- **There are free public datasets.** Google has a bunch of datasets anyone can use, like weather, census, and transportation data. I didn't have to upload anything.
+- **It shows how much data a query will use before you run it.** That matters because BigQuery charges based on how much data you search through.
+- **Only pick the columns you need.** BigQuery looks at data column by column, so `SELECT *` (grab everything) uses way more data than picking just a few columns.
+
+### Looker Studio
+
+Looker Studio is Google's free tool for making charts and dashboards. You connect it to your data (like a Google Sheet or a BigQuery table) and then drag and drop charts onto a page. You can share the report like a Google Doc.
+
+## Chapter 1: Making a Line Chart
+
+**Question:** How has the average world temperature changed each year?
+
+### Looking at the Dataset
+
+Before writing any code, I learned to look around the dataset first:
+
+- **Schema** shows the column names and what type of data is in each one.
+- **Details** shows how big the table is.
+- **Preview** lets you see some of the rows for free.
+
+Two things I noticed:
+
+- Each year has its own table (like `gsod1929`, `gsod1930`, and so on).
+- When a temperature is missing, it's saved as `9999.9`. If you don't remove those, your averages come out way off.
+
+### My First Query
+
+This pulls a few columns from the 1929 table:
+
+```sql
+SELECT stn, year, mo, da, temp
+FROM `bigquery-public-data.noaa_gsod.gsod1929`
+LIMIT 100;
+```
+
+The table name goes `project.dataset.table`, inside backticks.
+
+### Finding the Average
+
+There are thousands of daily readings, so I used `AVG()` to get one average number and `GROUP BY` to get one row per year:
+
+```sql
+SELECT year, AVG(temp) AS avg_temp
+FROM `bigquery-public-data.noaa_gsod.gsod1929`
+WHERE temp != 9999.9
+GROUP BY year;
+```
+
+### Searching Many Tables at Once
+
+Since every year is a separate table, I didn't want to write a query for each one. The trick is to put a `*` where the year goes. That searches all the tables at once. `_TABLE_SUFFIX` lets you choose which years to include:
+
+```sql
+SELECT year, ROUND(AVG(temp), 2) AS avg_temp
+FROM `bigquery-public-data.noaa_gsod.gsod*`
+WHERE temp != 9999.9
+  AND _TABLE_SUFFIX BETWEEN '1929' AND '2020'
+GROUP BY year
+ORDER BY year;
+```
+
+That one query gave me the average temperature for every year across about 90 years.
+
+### Making the Chart in Looker Studio
+
+1. Make a blank report and add a data source. The course showed how to connect a Google Sheet and how to connect BigQuery.
+2. For BigQuery, you can pick a table or paste in your own query.
+3. Add a line chart, with `year` on the bottom and `avg_temp` as the number.
+
+A line chart works here because I'm looking at how something changes over time.
+
+### Challenge
+
+The chapter ended with a challenge to do it all on my own: write the query, connect it to Looker Studio, and chart the average temperature by year. The chart shows temperatures going up over time, which is the main point of the "article."
+
+## Chapter 2: Comparing Countries with a Column Chart
+
+**Question:** How did the temperature change by decade in a few different countries?
+
+### Joining Two Tables
+
+The weather tables don't say which country each reading is from. That info is in a separate **stations** table. So I had to use a `JOIN`, which connects the two tables using the weather station ID:
+
+```sql
+SELECT
+  s.country,
+  g.year,
+  ROUND(AVG(g.temp), 2) AS avg_temp
+FROM `bigquery-public-data.noaa_gsod.gsod*` AS g
+JOIN `bigquery-public-data.noaa_gsod.stations` AS s
+  ON g.stn = s.usaf
+ AND g.wban = s.wban
+WHERE g.temp != 9999.9
+  AND s.country IN ('US', 'UK', 'AS')  -- example countries
+GROUP BY s.country, g.year
+ORDER BY s.country, g.year;
+```
+
+What I learned: you have to connect the tables on the right columns, or the results come out wrong.
+
+### Line Charts vs. Column Charts
+
+- **Line charts** are good for showing change over time. If you add country as a "breakdown," you get one line per country.
+- **Column charts** are better for comparing groups side by side. I put decade on the bottom and broke it down by country, so each decade had a bar for each country.
+- **Sort order matters.** I had to sort the decades from oldest to newest, or they'd show up out of order.
+
+### Turning Years into Decades
+
+To group years into decades, I used string functions. `SUBSTR` grabs the first 3 characters of the year (like "195" from "1953"), and `CONCAT` adds "0s" to the end. That turns it into "1950s":
+
+```sql
+SELECT
+  s.country,
+  CONCAT(SUBSTR(g.year, 1, 3), '0s') AS decade,
+  ROUND(AVG(g.temp), 2) AS avg_temp
+FROM `bigquery-public-data.noaa_gsod.gsod*` AS g
+JOIN `bigquery-public-data.noaa_gsod.stations` AS s
+  ON g.stn = s.usaf AND g.wban = s.wban
+WHERE g.temp != 9999.9
+  AND _TABLE_SUFFIX BETWEEN '1900' AND '1999'
+GROUP BY s.country, decade
+ORDER BY decade;
+```
+
+### Updating the Data in Looker Studio
+
+When I changed my query in BigQuery, Looker Studio didn't update on its own. I had to edit the data source and click **Reconnect** so the new `decade` column showed up. After that, I just switched the chart from `year` to `decade`. I didn't have to build a new chart.
+
+## Chapter 3: Map Charts
+
+**Question:** Which countries had the biggest temperature changes?
+
+### Comparing to a Long-Term Average
+
+To figure this out, I compared each country's recent temperature to its average over the past 50 years. The query has two parts. The first finds the 50-year average, and the second finds the recent average. Then it subtracts one from the other:
+
+```sql
+WITH baseline AS (
+  SELECT s.country, AVG(g.temp) AS avg_50yr
+  FROM `bigquery-public-data.noaa_gsod.gsod*` AS g
+  JOIN `bigquery-public-data.noaa_gsod.stations` AS s
+    ON g.stn = s.usaf AND g.wban = s.wban
+  WHERE g.temp != 9999.9
+    AND _TABLE_SUFFIX BETWEEN '1970' AND '2019'
+  GROUP BY s.country
+),
+recent AS (
+  SELECT s.country, AVG(g.temp) AS avg_recent
+  FROM `bigquery-public-data.noaa_gsod.gsod*` AS g
+  JOIN `bigquery-public-data.noaa_gsod.stations` AS s
+    ON g.stn = s.usaf AND g.wban = s.wban
+  WHERE g.temp != 9999.9
+    AND _TABLE_SUFFIX = '2020'
+  GROUP BY s.country
+)
+SELECT
+  r.country,
+  ROUND(r.avg_recent - b.avg_50yr, 2) AS temp_change
+FROM recent AS r
+JOIN baseline AS b USING (country)
+ORDER BY temp_change DESC;
+```
+
+### Saving the Results as a Table
+
+This query is big, so instead of running it again every time, I saved the results as my own table in BigQuery. Then I connected that table to Looker Studio. That makes the report load faster and costs less.
+
+### Making the Map
+
+In Looker Studio, I made a **geo chart** (a map):
+
+- The country column tells the map where to color.
+- The temperature change is the number.
+- Countries with bigger changes show up in darker colors, so you can see right away which ones changed the most.
+
+This was my favorite chart because it answers the question in one look.
+
+## Key Takeaways
+
+- **Start with a question.** Every chapter started with a problem, which made it easier to understand why I was writing each query.
+- **Public datasets save a lot of time.** I got almost 100 years of weather data without collecting anything myself.
+- **Watch how much data you use.** Picking only the columns you need and filtering by year keeps queries cheaper.
+- **Clean the data first.** Missing values like `9999.9` can mess up your averages if you don't remove them.
+- **Pick the right chart.** Line charts are for change over time, column charts are for comparing groups, and maps are for comparing places.
+- **BigQuery and Looker Studio work together.** Clean and summarize the data in BigQuery, then show it in Looker Studio. If you change the query, reconnect the data source.
+
+## Reflection
+
+This course helped me see how SQL connects to actual charts. I've been practicing SQL this semester, but seeing `GROUP BY`, `JOIN`, and string functions turn into a real dashboard made it make more sense. Since I'm in marketing, I can see using the same steps for social media or campaign data: put it in BigQuery, summarize it, and make a Looker Studio report that's easy for anyone to read. The biggest thing I took away is that a good chart should answer one clear question.
+
+## Certificate of Completion
+
+![LinkedIn Learning certificate of completion](certificate.png){fig-align="center" width="90%"}
