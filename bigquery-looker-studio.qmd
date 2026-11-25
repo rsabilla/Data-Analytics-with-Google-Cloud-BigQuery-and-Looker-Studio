@@ -226,3 +226,11 @@ This course helped me see how SQL connects to actual charts. I've been practicin
 ## Certificate of Completion
 
 ![LinkedIn Learning certificate of completion](certificate.png){fig-align="center" width="90%"}
+
+## Appendix {.appendix}
+
+### Project Links
+
+- **GitHub repository:** <https://github.com/rsabilla/Data-Analytics-with-Google-Cloud-BigQuery-and-Looker-Studio>
+- **Published report (GitHub Pages):** <https://rsabilla.github.io/Data-Analytics-with-Google-Cloud-BigQuery-and-Looker-Studio/>
+- **Clone URL:** `https://github.com/rsabilla/Data-Analytics-with-Google-Cloud-BigQuery-and-Looker-Studio.git`
